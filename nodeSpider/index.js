@@ -2,13 +2,12 @@ const axios = require('axios')
 const cheerio = require('cheerio')
 const iconv = require('iconv-lite')
 var { exec } = require('child_process')
-const targetText = '91'
 
 /**
  * UA生成器
  */
 class HeaderGenerator {
-  static user_agent_list = [
+  user_agent_list = [
     'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.111 Safari/537.36',
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.212 Safari/537.36',
     'Mozilla/5.0 (Windows NT 6.2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/28.0.1464.0 Safari/537.36',
@@ -32,12 +31,12 @@ class HeaderGenerator {
     HeaderGenerator.instance = this
     this.index = 0
     this.cookie = this.defaultCookie
-    this.user_agent_list = this.randomOrderArray(user_agent_list)
+    this.user_agent_list = this.randomOrderArray(this.user_agent_list)
     return this
   }
   // 获取UA
   getUserAgent() {
-    if (this.index < user_agent_list.length) {
+    if (this.index < this.user_agent_list.length) {
       this.index++
     } else {
       this.index = 0
@@ -69,60 +68,72 @@ class HeaderGenerator {
 
 const UA = new HeaderGenerator()
 
-function getResouce(url) {
-  axios({
-    method: 'get',
-    url: url,
-    responseType: 'arraybuffer',
-    headers: {
-      cookie: UA.getCookie(),
-      'User-Agent': UA.getUserAgent()
-    }
-  })
-    .then((res) => {
-      UA.updateCookie(res)
-      // node环境下不支持GBK编码，需要转码处理
-      const data = iconv.decode(res.data, 'gb2312')
-
-      matchHtml(data)
+class NodeSpider {
+  constructor({ keyword, getNodes }) {
+    this.keyword = keyword
+    this.getNodes = getNodes
+  }
+  // 页面抓取
+  getResouce(url) {
+    axios({
+      method: 'get',
+      url: url,
+      responseType: 'arraybuffer',
+      headers: {
+        cookie: UA.getCookie(),
+        'User-Agent': UA.getUserAgent()
+      }
     })
-    .catch((err) => {
-      console.log('🚀 ~ file: index.js ~ line 10 ~ err', err)
-    })
-}
+      .then((res) => {
+        UA.updateCookie(res)
+        // node环境下不支持GBK编码，需要转码处理
+        const html = iconv.decode(res.data, 'gb2312')
 
-/**
- * 解析html并查找到对应的节点
- * @param {*} html
- */
-function matchHtml(html) {
-  let $ = cheerio.load(html)
-  $('tbody tr th a.xst').each(function (i, e) {
-    const text = e.children[0].data
-    // console.log('🚀 ~ file: index.js ~ line 60 ~ text', e)
-    if (text.includes(targetText)) {
-      // console.log(process.platform)
-      console.log('🚀 ~ file: index.js ~ line 71 ~ text', text)
-      exec(`start https://www.91god.biz/${e.attribs.href}`)
+        let $ = cheerio.load(html)
+        this.domNodeCatch($)
+      })
+      .catch((err) => {})
+  }
+  // 节点解析
+  domNodeCatch($) {
+    this.getNodes($, this.keyword, this.openPage)
+  }
+  // node打开标签页
+  openPage(url) {
+    let cmd = 'start'
+    switch (process.platform) {
+      case 'wind32':
+        cmd = 'start'
+        break
+      case 'linux':
+        cmd = 'xdg-open'
+        break
+      case 'darwin':
+        cmd = 'open'
+        break
     }
-    // console.log('🚀 ~ file: index.js ~ line 58 ~ e', e)
-  })
-}
 
-function getNode($, keyword = '', openPage ) {
+    exec(`${cmd} ${url}`)
+  }
+}
+const domainame = 'https://www.91god.biz/'
+function getNode($, keyword = '', openPage) {
   $('tbody tr th a.xst').each(function (i, e) {
     const text = e.children[0].data
     if (text.includes(keyword)) {
-      openPage(`https://www.91god.biz/${e.attribs.href}`)
+      openPage(`${domainame}${e.attribs.href}`)
     }
   })
 }
 
-
 function start() {
+  const nodeSpider = new NodeSpider({
+    keyword: '91',
+    getNodes: getNode
+  })
   for (let i = 1; i < 5; i++) {
-    let url = `https://www.91god.biz/forum-37-${i}.html`
-    getResouce(url)
+    let url = `${domainame}forum-37-${i}.html`
+    nodeSpider.getResouce(url)
   }
 }
 start()
